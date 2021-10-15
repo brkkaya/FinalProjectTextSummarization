@@ -1,4 +1,8 @@
-from dependency_injector import containers
+from dependency_injector import containers, providers
 
 class Container(containers.DeclarativeContainer):
-    pass
+    def __init__(self) -> None:
+        super().__init__()
+        
+        self.config_service =providers.Configuration()
+        
