@@ -1,6 +1,8 @@
-import graypy
-import logging
+
+
+from src.services.logger import Logger
+
 
 class BaseService:
     def __init__(self) -> None:
-        self.log = logging.getLogger()
+        self.log = Logger.log
