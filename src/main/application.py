@@ -1,5 +1,6 @@
 from src.services.Path_provider import GLobalPathProvider
 from src.services.logger import Logger
+from src.services.yaml_loader import YamlLoader
 
 
 class Application(Logger):
@@ -7,6 +8,7 @@ class Application(Logger):
         self.log.info("Hello world")
         path_provider = GLobalPathProvider(file_name="hello")
         self.log.info((path_provider.path))
+        YamlLoader()
 
 
 if __name__ == "__main__":
