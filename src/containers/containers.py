@@ -1,8 +1,9 @@
-from dependency_injector import containers, providers
+from DataRetrieve.wiki_data_parser import DataParser
 
-class Container(containers.DeclarativeContainer):
-    def __init__(self) -> None:
-        super().__init__()
-        
-        self.config_service =providers.Configuration()
-        
+from DataRetrieve.wiki_data_scraper import DataScraper
+
+
+class Container:
+
+    parser = DataParser()
+    data_retriever = DataScraper(parser=parser)
