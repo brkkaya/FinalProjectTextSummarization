@@ -1,9 +1,12 @@
-from src.services.logger import Logger
+from src.services.base_service import BaseService
 
 
-class Application(Logger):
+class Application(BaseService):
     def __init__(self):
         self.log.info("Hello world")
+        
+        self.log.info(self.config.param)
+        
 
 
 if __name__ == "__main__":
