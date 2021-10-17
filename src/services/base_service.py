@@ -1,8 +1,8 @@
-
-
 from src.services.logger import Logger
+from src.services.yaml_loader import YamlLoader
 
 
 class BaseService:
-    def __init__(self) -> None:
-        self.log = Logger.log
+
+    log = Logger.log
+    config = YamlLoader().config

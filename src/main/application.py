@@ -1,14 +1,12 @@
-from src.services.Path_provider import GLobalPathProvider
-from src.services.logger import Logger
-from src.services.yaml_loader import YamlLoader
+from src.services.base_service import BaseService
 
 
-class Application(Logger):
+class Application(BaseService):
     def __init__(self):
         self.log.info("Hello world")
-        path_provider = GLobalPathProvider(file_name="hello")
-        self.log.info((path_provider.path))
-        YamlLoader()
+        
+        self.log.info(self.config.param)
+        
 
 
 if __name__ == "__main__":
