@@ -4,5 +4,6 @@ from src.services.yaml_loader import YamlLoader
 
 class BaseService:
 
-    log = Logger.log
+    log = Logger().log
     config = YamlLoader().config
+    
