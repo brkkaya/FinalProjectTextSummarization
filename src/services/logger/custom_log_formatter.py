@@ -1,4 +1,4 @@
-import logging
+
 import typing
 from colorlog import ColoredFormatter
 from colorlog.formatter import LogColors, SecondaryLogColors

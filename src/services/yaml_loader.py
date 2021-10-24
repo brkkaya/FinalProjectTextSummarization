@@ -1,6 +1,6 @@
 from box import Box
 
-from src.services.Path_provider import GLobalPathProvider
+from src.services.path_provider import GLobalPathProvider
 
 
 class YamlLoader:

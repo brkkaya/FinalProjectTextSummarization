@@ -1,4 +1,4 @@
-from src.services.logger import Logger
+from src.services.logger.logger import Logger
 from src.services.yaml_loader import YamlLoader
 
 
