@@ -5,7 +5,7 @@ from datetime import datetime
 
 
 class GLobalPathProvider:
-    def __init__(self, file_name: Union[str, None]) -> None:
+    def __init__(self, file_name: Union[str, None] = None) -> None:
         if file_name:
             f_name = file_name + ".log"
         else:

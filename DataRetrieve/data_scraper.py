@@ -1,6 +1,6 @@
 from io import StringIO
 from re import search
-from DataRetrieve.wiki_data_parser import DataParser
+from DataRetrieve.data_parser import DataParser
 from src.services.base_service import BaseService
 from mediawiki import MediaWiki
 import csv, codecs
