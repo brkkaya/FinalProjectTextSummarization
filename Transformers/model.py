@@ -1,5 +1,5 @@
 from typing import List, Union
-from transformers import AutoModel
+from transformers import TFAutoModel
 from src.services.base_service import BaseService
 from DataRetrieve.data_reader import DataReader
 import tensorflow as tf
@@ -223,12 +223,7 @@ class SummarizationModel(BaseService):
         super().__init__()
         self.data_reader = data_reader
 
-    def look_ahead_mask(model_dimension: int):
-        mask = 1 - tf.linalg.band_part(
-            tf.ones((model_dimension, model_dimension), -1, 0)
-        )
-
-        return mask
+    
 
 
 class Encoder(keras.layers.Layer):
@@ -303,3 +298,44 @@ class Decoder(keras.layers.Layer):
             )
 
         return x
+
+
+class BertTransformers(keras.Model):
+    def __init__(
+        self,
+        model_dim: int,
+        seq_dim: int,
+        number_of_decoder: int,
+        epsilon: float,
+        drop_out_rate: float,
+        vocab_size: int,
+        number_of_head: int,
+        encoder: TFAutoModel,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.bert = encoder
+        self.decoder = Decoder(
+            model_dim=model_dim,
+            seq_dim=seq_dim,
+            number_of_decoder=number_of_decoder,
+            number_of_heads=number_of_head,
+            epsilon=epsilon,
+            drop_out_rate=drop_out_rate,
+            vocab_size=vocab_size,
+        )
+        self.final_layer = keras.layers.Dense(vocab_size)
+    
+    def create_padding_mask(self,seq):
+        seq = tf.cast(tf.math.equal(seq, 0), tf.float32)
+
+        # add extra dimensions to add the padding
+        # to the attention logits.
+        return seq[:, tf.newaxis, tf.newaxis, :]  # (batch_size, 1, 1, seq_len)
+
+    def look_ahead_mask(self,model_dimension: int):
+        mask = 1 - tf.linalg.band_part(
+            tf.ones((model_dimension, model_dimension), -1, 0)
+        )
+
+        return mask
