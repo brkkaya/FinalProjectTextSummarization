@@ -100,7 +100,7 @@ class PointWiseFeedForward(keras.layers.Layer):
         self, model_dim: int, seq_dim: int, drop_out_rate: float, **kwargs
     ):
         super().__init__(**kwargs)
-        self.seq = keras.layers.Dense(seq_dim, activation="relu")
+        self.seq = keras.layers.Dense(seq_dim, activation=tf.nn.gelu)
         self.model = keras.layers.Dense(model_dim)
         self.drop = keras.layers.Dropout(rate=drop_out_rate)
 
@@ -229,3 +229,77 @@ class SummarizationModel(BaseService):
         )
 
         return mask
+
+
+class Encoder(keras.layers.Layer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+
+class Decoder(keras.layers.Layer):
+    def __init__(
+        self,
+        number_of_decoder: int,
+        vocab_size: int,
+        model_dim: int,
+        seq_dim: int,
+        number_of_heads: int,
+        epsilon: float,
+        drop_out_rate: float,
+        **kwargs,
+    ):
+
+        super().__init__(**kwargs)
+        self.number_of_decoder = number_of_decoder
+        self.model_dim = model_dim
+
+        self.embedding = keras.layers.Embedding(
+            input_dim=vocab_size, output_dim=seq_dim
+        )
+        self.pos_encoding = PositionalEncoding(
+            model_dimension=model_dim, max_sequence_length=seq_dim
+        )
+
+        self.decoder = DecoderLayer(
+            model_dim=model_dim,
+            seq_dim=seq_dim,
+            number_of_heads=number_of_heads,
+            epsilon=epsilon,
+            drop_out_rate=drop_out_rate,
+        )
+        self.decoder_layers = [
+            DecoderLayer(
+                model_dim=model_dim,
+                seq_dim=seq_dim,
+                number_of_heads=number_of_heads,
+                epsilon=epsilon,
+                drop_out_rate=drop_out_rate,
+            )
+            for _ in range(number_of_decoder)
+        ]
+
+        self.dropout = keras.layers.Dropout(rate=drop_out_rate)
+
+    def call(
+        self,
+        input: tf.Tensor,
+        encoder_value: tf.Tensor,
+        look_ahead_mask: tf.Tensor,
+        padding_mask: tf.Tensor,
+    ):
+        seq_len = tf.shape(input)[-1]
+        embedding = self.embedding(input)
+        embedding *= tf.math.sqrt(tf.cast(self.model_dim, tf.float32))
+        pos_encoded += self.pos_encoding[:, :seq_len, :]
+
+        x = self.dropout(pos_encoded, training=False)
+
+        for decoder_layer in self.decoder_layers:
+            x = decoder_layer(
+                x,
+                encoder_value,
+                look_ahead_mask,
+                padding_mask,
+            )
+
+        return x
