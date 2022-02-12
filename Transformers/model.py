@@ -1,16 +1,10 @@
-from typing import List
+from typing import List, Union
 from transformers import AutoModel
 from src.services.base_service import BaseService
 from DataRetrieve.data_reader import DataReader
 import tensorflow as tf
 import tensorflow.keras.backend as k
 import tensorflow.keras as keras
-
-
-class SummarizationModel(BaseService):
-    def __init__(self, data_reader: DataReader) -> None:
-        super().__init__()
-        self.data_reader = data_reader
 
 
 class PositionalEncoding(keras.layers.Layer):
@@ -30,35 +24,28 @@ class PositionalEncoding(keras.layers.Layer):
         positional_encodings[:, 1::2] = tf.math.cos(position_id * frequencies)
 
 
-def look_ahead_mask(model_dimension: int):
-    mask = 1 - tf.linalg.band_part(
-        tf.ones((model_dimension, model_dimension), -1, 0)
-    )
-    return mask
-
-
 class MultiHeadAttention(keras.layers.Layer):
     def __init__(
         self,
         number_of_heads: int = 8,
-        model_dim: int = 768,
+        seq_dim: int = 768,
         **kwargs,
     ):
         super().__init__(**kwargs)
-        assert model_dim % number_of_heads == 0
+        assert seq_dim % number_of_heads == 0
 
         self.number_of_heads = number_of_heads
-        self.model_dim = model_dim
-        self.depth = model_dim // number_of_heads
+        self.seq_dim = seq_dim
+        self.depth = seq_dim // number_of_heads
 
         self.drop = keras.layers.Dropout(0.5)
-        self.wq = keras.layers.Dense(units=model_dim)
-        self.wk = keras.layers.Dense(units=model_dim)
-        self.wv = keras.layers.Dense(units=model_dim)
+        self.wq = keras.layers.Dense(units=seq_dim)
+        self.wk = keras.layers.Dense(units=seq_dim)
+        self.wv = keras.layers.Dense(units=seq_dim)
 
-        self.output = keras.layers.Dense(units=model_dim)
+        self.output = keras.layers.Dense(units=seq_dim)
 
-    def scaled_dot_product(
+    def __scaled_dot_product(
         self,
         query: tf.Tensor,
         key: tf.Tensor,
@@ -74,7 +61,7 @@ class MultiHeadAttention(keras.layers.Layer):
 
         return tf.matmul(scaled_attention, value)
 
-    def split_heads(self, weights: tf.Tensor, batch_size: int) -> tf.Tensor:
+    def __split_heads(self, weights: tf.Tensor, batch_size: int) -> tf.Tensor:
         weights = tf.reshape(
             weights, (batch_size, -1, self.num_heads, self.depth)
         )
@@ -92,30 +79,153 @@ class MultiHeadAttention(keras.layers.Layer):
         k = self.wk(key)
         v = self.wv(value)
 
-        q = self.split_heads(weights=q, batch_size=batch_size)
-        k = self.split_heads(weights=k, batch_size=batch_size)
-        v = self.split_heads(weights=v, batch_size=batch_size)
+        q = self.__split_heads(weights=q, batch_size=batch_size)
+        k = self.__split_heads(weights=k, batch_size=batch_size)
+        v = self.__split_heads(weights=v, batch_size=batch_size)
 
-        scaled_attention = self.scaled_dot_product(
+        scaled_attention = self.__scaled_dot_product(
             query=q, key=k, value=v, mask=mask
         )
 
         scaled_attention = tf.transpose(scaled_attention, perm=[0, 2, 1, 3])
         concat_attention = tf.reshape(
-            scaled_attention, (batch_size, -1, self.model_dim)
+            scaled_attention, (batch_size, -1, self.seq_dim)
         )
 
         return self.output(concat_attention)
 
 
 class PointWiseFeedForward(keras.layers.Layer):
-    def __init__(self, model_dim: int, seq_dim: int, **kwargs):
+    def __init__(
+        self, model_dim: int, seq_dim: int, drop_out_rate: float, **kwargs
+    ):
         super().__init__(**kwargs)
         self.seq = keras.layers.Dense(seq_dim, activation="relu")
         self.model = keras.layers.Dense(model_dim)
-    
-    def call(self,weights:tf.Tensor)->tf.Tensor:
+        self.drop = keras.layers.Dropout(rate=drop_out_rate)
+
+    def call(self, weights: tf.Tensor) -> tf.Tensor:
         x = self.seq(weights)
-        x = self.model(weights)
+        x = self.drop(x)
+        x = self.model(x)
         return x
 
+
+class EncoderLayer(keras.layers.Layer):
+    def __init__(
+        self,
+        model_dim: int,
+        seq_dim: int,
+        number_of_heads: int,
+        epsilon: float,
+        drop_out_rate: float,
+        **kwargs,
+    ) -> None:
+        self.mha = MultiHeadAttention(
+            seq_dim=seq_dim, number_of_heads=number_of_heads
+        )
+        self.layer_norm1 = keras.layers.LayerNormalization(epsilon=epsilon)
+        self.layer_norm2 = keras.layers.LayerNormalization(epsilon=epsilon)
+        self.feed_forward = PointWiseFeedForward(
+            model_dim=model_dim,
+            seq_dim=seq_dim,
+            drop_out_rate=drop_out_rate,
+        )
+        self.dropout1 = keras.layers.Dropout(drop_out_rate)
+        self.dropout2 = keras.layers.Dropout(drop_out_rate)
+
+    def call(
+        self, input_tensor: tf.Tensor, mask: Union[tf.Tensor, None] = None
+    ):
+        attention_output = self.mha(
+            query=input_tensor, key=input_tensor, value=input_tensor, mask=mask
+        )
+        attention_output = self.dropout1(attention_output, training=False)
+        out1 = self.layer_norm1(input_tensor + attention_output)
+
+        feed_forward_out = self.feed_forward(out1)
+        feed_forward_out = self.dropout2(feed_forward_out, training=False)
+        out2 = self.layer_norm2(out1 + feed_forward_out)
+        return out2
+
+
+class DecoderLayer(keras.layers.Layer):
+    def __init__(
+        self,
+        model_dim: int,
+        seq_dim: int,
+        number_of_heads: int,
+        epsilon: float,
+        drop_out_rate: float,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.look_ahead_mha = MultiHeadAttention(
+            number_of_heads=number_of_heads,
+            seq_dim=seq_dim,
+        )
+        self.padding_mha = MultiHeadAttention(
+            number_of_heads=number_of_heads,
+            seq_dim=seq_dim,
+        )
+        self.dropout1 = keras.layers.Dropout(rate=drop_out_rate)
+        self.dropout2 = keras.layers.Dropout(rate=drop_out_rate)
+        self.dropout3 = keras.layers.Dropout(rate=drop_out_rate)
+
+        self.layer_norm1 = keras.layers.LayerNormalization(epsilon=epsilon)
+        self.layer_norm2 = keras.layers.LayerNormalization(epsilon=epsilon)
+        self.layer_norm3 = keras.layers.LayerNormalization(epsilon=epsilon)
+
+        self.feed_forward = PointWiseFeedForward(
+            model_dim=model_dim,
+            seq_dim=seq_dim,
+            drop_out_rate=drop_out_rate,
+        )
+
+    def call(
+        self,
+        input_tensor: tf.Tensor,
+        encoder_representation: tf.Tensor,
+        look_ahead_mask: Union[tf.Tensor, None],
+        padding_mask: Union[tf.Tensor, None],
+    ):
+        look_ahead_attention_output = self.look_ahead_mha(
+            query=input_tensor,
+            key=input_tensor,
+            value=input_tensor,
+            mask=look_ahead_mask,
+        )
+        look_ahead_attention_output = self.dropout1(
+            look_ahead_attention_output, training=False
+        )
+        out1 = self.layer_norm1(input_tensor + look_ahead_attention_output)
+
+        padding_attention_output = self.padding_mha(
+            query=encoder_representation,
+            key=encoder_representation,
+            value=out1,
+            mask=padding_mask,
+        )
+        padding_attention_output = self.dropout2(
+            padding_attention_output, training=False
+        )
+
+        out2 = self.layer_norm2(out1 + padding_attention_output)
+
+        feed_forward = self.feed_forward(out2)
+        feed_forward = self.dropout3(feed_forward, training=False)
+        out3 = self.layer_norm3(out2 + feed_forward)
+        return out3
+
+
+class SummarizationModel(BaseService):
+    def __init__(self, data_reader: DataReader) -> None:
+        super().__init__()
+        self.data_reader = data_reader
+
+    def look_ahead_mask(model_dimension: int):
+        mask = 1 - tf.linalg.band_part(
+            tf.ones((model_dimension, model_dimension), -1, 0)
+        )
+
+        return mask
