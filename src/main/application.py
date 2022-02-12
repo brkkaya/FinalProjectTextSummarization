@@ -5,7 +5,7 @@ class Application:
     def __init__(self):
         app = Container()
         # app.data_retriever._run()
-        app.process.import_data()
+        app.process.pipeline()
 
 
 

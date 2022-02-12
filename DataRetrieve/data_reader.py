@@ -15,7 +15,11 @@ class DataReader(BaseService):
             self._df_train = pd.DataFrame(
                 [json.loads(json_line) for json_line in jsonl_file],
                 columns=["text", "summary"],
-            ).sample(150000)
+            )[:50]
+            if self.config.params.truncate:
+                self._df_train = self._df_train.iloc[
+                    len(self._df_train.iloc[:, 0]) <= 512, :
+                ]
 
         with open(
             f"{self.global_path_provider.path}/tu_test.jsonl", "r"
@@ -24,8 +28,11 @@ class DataReader(BaseService):
             self._df_test = pd.DataFrame(
                 [json.loads(json_line) for json_line in jsonl_file],
                 columns=["text", "summary"],
-            ).sample(150000)
-
+            )
+            if self.config.params.truncate:
+                self._df_test = self._df_test.iloc[
+                    len(self._df_test.iloc[:, 0]) <= 512, :
+                ]
         with open(
             f"{self.global_path_provider.path}/tu_val.jsonl", "r"
         ) as jsonl_file:
@@ -33,7 +40,11 @@ class DataReader(BaseService):
             self._df_val = pd.DataFrame(
                 [json.loads(json_line) for json_line in jsonl_file],
                 columns=["text", "summary"],
-            ).sample(150000)
+            )
+            if self.config.params.truncate:
+                self._df_val = self._df_val.iloc[
+                    len(self._df_val.iloc[:, 0]) <= 512, :
+                ]
 
     @property
     def df_train(self) -> pd.DataFrame:
