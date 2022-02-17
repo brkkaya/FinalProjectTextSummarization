@@ -1,7 +1,7 @@
 from typing import List, Union
 from transformers import TFAutoModel
 from src.services.base_service import BaseService
-from DataRetrieve.data_reader import DataReader
+from data_retrieve.data_reader import DataReader
 import tensorflow as tf
 import tensorflow.keras.backend as k
 import tensorflow.keras as keras
@@ -223,12 +223,25 @@ class SummarizationModel(BaseService):
         super().__init__()
         self.data_reader = data_reader
 
-    
-
 
 class Encoder(keras.layers.Layer):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.encoder = TFAutoModel.from_pretrained(
+            "dbmdz/bert-base-turkish-128k-uncased"
+        )
+
+    def call(self, x: tf.Tensor):
+        """
+
+        Args:
+            x (tf.Tensor): Tokenized raw string inputs [None, seq_dim,model_dim]
+
+        Returns:
+            _type_: _description_
+        """
+        x = self.encoder(x)
+        return x
 
 
 class Decoder(keras.layers.Layer):
@@ -285,7 +298,7 @@ class Decoder(keras.layers.Layer):
         seq_len = tf.shape(input)[-1]
         embedding = self.embedding(input)
         embedding *= tf.math.sqrt(tf.cast(self.model_dim, tf.float32))
-        pos_encoded += self.pos_encoding[:, :seq_len, :]
+        pos_encoded = self.pos_encoding[:, :seq_len, :]
 
         x = self.dropout(pos_encoded, training=False)
 
@@ -310,11 +323,10 @@ class BertTransformers(keras.Model):
         drop_out_rate: float,
         vocab_size: int,
         number_of_head: int,
-        encoder: TFAutoModel,
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.bert = encoder
+        self.bert = Encoder()
         self.decoder = Decoder(
             model_dim=model_dim,
             seq_dim=seq_dim,
@@ -324,18 +336,76 @@ class BertTransformers(keras.Model):
             drop_out_rate=drop_out_rate,
             vocab_size=vocab_size,
         )
-        self.final_layer = keras.layers.Dense(vocab_size)
-    
-    def create_padding_mask(self,seq):
+        self.final_layer = keras.layers.Dense(vocab_size, activation="softmax")
+
+    def __create_padding_mask(self, seq: tf.Tensor):
         seq = tf.cast(tf.math.equal(seq, 0), tf.float32)
 
         # add extra dimensions to add the padding
         # to the attention logits.
         return seq[:, tf.newaxis, tf.newaxis, :]  # (batch_size, 1, 1, seq_len)
 
-    def look_ahead_mask(self,model_dimension: int):
+    def __look_ahead_mask(self, model_dimension: int):
         mask = 1 - tf.linalg.band_part(
             tf.ones((model_dimension, model_dimension), -1, 0)
         )
 
         return mask
+
+    def create_masks(self, source: tf.Tensor, target: tf.Tensor):
+        """"""
+        # Encoder padding
+        encoder_padding_mask = self.__create_padding_mask(seq=source)
+
+        # This used in second attention block in the decoder
+        decoder_padding_mask = self.__create_padding_mask(seq=source)
+
+        # first attention block in decoder
+        look_ahead_mask = self.__look_ahead_mask(
+            model_dimension=tf.shape(target)[-1]
+        )
+        decoder_target_padding = self.__create_padding_mask(seq=target)
+        look_ahead_mask = tf.maximum(decoder_target_padding, look_ahead_mask)
+
+        return encoder_padding_mask, decoder_padding_mask, look_ahead_mask
+
+    def call(
+        self,
+        source: tf.Tensor,
+        target: tf.Tensor,
+        source_padding_mask: tf.Tensor=None,
+        target_padding_mask: tf.Tensor=None,
+        look_ahead_target_mask: tf.Tensor=None,
+        
+    ):
+        (
+            encoder_padding_mask,
+            look_ahead_mask,
+            decoder_padding_mask,
+        ) = self.create_masks(source=source, target=target)
+        """input and target must be tokenized."""
+        encoder_output = self.bert(source)
+        decoder_output = self.decoder(
+            input=source,
+            encoder_value=encoder_output,
+            look_ahead_mask=look_ahead_mask,
+            padding_mask=decoder_padding_mask,
+        )
+    
+class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+  def __init__(self, d_model, warmup_steps=4000):
+    super(CustomSchedule, self).__init__()
+
+    self.d_model = d_model
+    self.d_model = tf.cast(self.d_model, tf.float32)
+
+    self.warmup_steps = warmup_steps
+
+  def __call__(self, step):
+    arg1 = tf.math.rsqrt(step)
+    
+    arg2 = step * (self.warmup_steps ** -1.5)
+
+    return tf.math.rsqrt(self.d_model) * tf.math.minimum(arg1, arg2)
+
+

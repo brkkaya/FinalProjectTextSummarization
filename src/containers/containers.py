@@ -1,9 +1,9 @@
-from DataRetrieve.data_parser import DataParser
-from DataRetrieve.data_reader import DataReader
+from data_retrieve.data_parser import DataParser
+from data_retrieve.data_reader import DataReader
 
-from DataRetrieve.data_scraper import DataScraper
-from Transformers.pre_process import PreProcess
-from transformers import AutoModel
+from data_retrieve.data_scraper import DataScraper
+from summary_generator.pre_process import PreProcess
+from transformers import TFAutoModel, AutoConfig
 
 
 class Container:
@@ -11,8 +11,13 @@ class Container:
     parser = DataParser()
     data_retriever = DataScraper(parser=parser)
     data_reader = DataReader()
-    model = AutoModel.from_pretrained("dbmdz/bert-base-turkish-128k-uncased")
-    
+    model_config = AutoConfig.from_pretrained(
+        "dbmdz/bert-base-turkish-128k-cased", output_hidden_states=True
+    )
+    model = TFAutoModel.from_pretrained(
+        "dbmdz/bert-base-turkish-128k-cased", config=model_config
+    )
+
     process = PreProcess(
         data_reader=data_reader,
         model=model,
