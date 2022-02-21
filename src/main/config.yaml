@@ -1,3 +1,4 @@
 write_header: False
 params:
   truncate: False
+  batch_size: 64

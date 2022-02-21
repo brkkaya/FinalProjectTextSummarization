@@ -12,6 +12,6 @@ class GLobalPathProvider:
             f_name = "console.log"
         __date = datetime.now().strftime("%m-%Y/%d/%H:%M:%S")
         self.path = str(Path(__file__).parent.parent.parent)
-        self.log_path = self.path + "/logs/" + __date
-        os.makedirs(self.log_path, exist_ok=True)
-        self.log_path += "/" + f_name
+        self.logs_path = self.path + "/logs/" + __date
+        os.makedirs(self.logs_path, exist_ok=True)
+        self.log_path = self.logs_path + "/" + f_name

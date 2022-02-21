@@ -4,10 +4,12 @@ import pandas as pd
 import re
 from transformers import AutoTokenizer, TFAutoModel
 from data_retrieve.data_reader import DataReader
-from typing import List
+from typing import Dict, List
 import math
 from torch.nn.functional import cosine_similarity
 from nltk.tokenize import sent_tokenize
+import torch
+from torch import nn, Tensor
 
 
 class PreProcess(BaseService):
@@ -24,56 +26,82 @@ class PreProcess(BaseService):
         texts: List[List[str]],
     ):
 
-        return [
-            self.tokenizer.encode(
-                text=text,
-                return_tensors="tf",
-                padding=True,
-                max_length=512,
-                return_attention_mask=False,
-                # truncation=True,
-            )
-            for text in texts
-        ]
+        return self.split_tokenizer_out(
+            [
+                self.tokenizer.encode_plus(
+                    text=text,
+                    return_tensors="tf",
+                    padding="max_length",
+                    max_length=512,
+                    return_attention_mask=True,
+                    truncation=True,
+                )
+                for text in texts
+            ]
+        )
 
-    def tokenizer_summary(self, summaries: List[List[str]]):
-        return [
-            self.tokenizer.encode(
-                text=summary,
-                return_tensors="tf",
-                padding=True,
-                max_length=512,
-                return_attention_mask=False,
-                # truncation=True,
-            )
-            for summary in summaries
-        ]
+    def batchify(data: Tensor, mask: Tensor, bsz: int) -> Tensor:
+        """Divides the data into bsz separate sequences, removing extra elements
+        that wouldn't cleanly fit.
+
+        Args:
+            data: Tensor, shape [N]
+            bsz: int, batch size
+
+        Returns:
+            Tensor of shape [N // bsz, bsz]
+        """
+        seq_len = data.size(0) // bsz
+        data = data[: seq_len * bsz]
+        mask = mask[: seq_len * bsz]
+        data = data.view(bsz, seq_len).t().contiguous()
+        mask = mask.view(bsz, seq_len).t().contiguous()
+        return data, mask
+        # return data.to(device)
+
+    def split_tokenizer_out(self, tokens: List[Dict]):
+        import tensorflow as tf
+
+        input_ids = []
+        attention_mask = []
+        token_type_ids = []
+
+        for token in tokens:
+            input_ids.append(token["input_ids"])
+            attention_mask.append(token["attention_mask"])
+            token_type_ids.append(token["token_type_ids"])
+        return (
+            (tf.squeeze(tf.stack(input_ids), axis=1)),
+            (tf.squeeze(tf.stack(attention_mask), axis=1)),
+            (tf.squeeze(tf.stack(token_type_ids), axis=1)),
+        )
 
     def pipeline(self):
-        # f = self.tokenizer_text(self.data_reader.df_train["text"].tolist())
-        raw_text = self.data_reader.df_train["text"].tolist()
-        raw_summary = self.data_reader.df_train["summary"].tolist()
-        # sentence_text = self.split_text_by_sentences(raw_text)
-        # sentence_summary = self.split_text_by_sentences(raw_summary)
-        # p = self.split_text_into_n_size_chunks(f)
-        # d = self.encode_chunks(, f2)
-        tokenized_text = self.tokenizer_text(raw_text)
-        tokenized_summary = self.tokenizer_summary(raw_summary)
-        self.decode_tokens(tokenized_text)
-        self.decode_tokens(tokenized_summary)
+        import tensorflow as tf
+
+        raw_text = self.data_reader.df_train["text"].values
+        raw_summary = self.data_reader.df_train["summary"].values
+        text_token, text_attention, text_ids = self.tokenizer_text(raw_text)
+        summary_token, summary_attention, summary_ids = self.tokenizer_text(
+            raw_summary
+        )
+
+        # s = self.model(text_token[0:20], text_attention[0:20])
+        # print(s)
         """Tokenized sentences even a sentence occurs, it type is List[List[int]]"""
 
-        # vector_summary = self.model(tokenized_summary["input_ids"])
-        # test = self.model(**tokenized_summary)
-        return
-        self.log.info("Tokenizer takes list of str")
+        return (
+            text_token,
+            text_attention,
+            summary_token,
+            summary_attention,
+        )
 
     def decode_tokens(self, input_ids):
-        return [self.log.info(self.tokenizer.batch_decode(tokens)) for tokens in input_ids]
-
-    def pipeline2(self):
-        x_train = [self.data_reader.df_train["text"].tolist()]
-        x_test = [self.data_reader.df_train["summary"].tolist()]
+        return [
+            self.log.info(self.tokenizer.batch_decode(tokens))
+            for tokens in input_ids
+        ]
 
     def vectorizer(self, text: List[str]):
         # tokens:List[List[str]] = [sentence.split(' ') for sentence in text]
@@ -147,17 +175,3 @@ class PreProcess(BaseService):
                     )
                 )
         return list(sorted(cos_list))[-sentence_per_chunk:]
-
-
-## if longer than 768 to around
-
-##It is not possible to find similarity between two sentences by cosine
-
-# Use pooled output to
-
-#%%
-(
-    "Leave Request created successfully."
-    f"Approvers sent the request for approval: {2}"
-)
-# %%
