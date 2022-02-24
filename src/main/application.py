@@ -6,7 +6,8 @@ class Application:
         app = Container()
         # app.data_retriever._run()
         # app.process.pipeline()
-        app.train.test_classify()
+        # app.train.test_classify()
+        app.train.train()
 
 
 if __name__ == "__main__":

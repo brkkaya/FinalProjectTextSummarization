@@ -1,22 +1,35 @@
 from base64 import encode
 from statistics import mode
 from time import time
-from src.services.base_service import BaseService
-from summary_generator.pre_process import PreProcess
-from summary_generator.model import (
-    BertTransformers,
-    CustomSchedule,
-    Decoder,
-    Encoder,
-    EncoderLayer,
-)
-from data_retrieve.data_reader import DataReader
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.losses import SparseCategoricalCrossentropy
 import tensorflow as tf
 import tensorflow.keras as keras
-from transformers import TFAutoModel
 import torch
+from data_retrieve.data_reader import DataReader
+from src.services.base_service import BaseService
+from tensorflow.keras.losses import SparseCategoricalCrossentropy
+from tensorflow.keras.optimizers import Adam
+from transformers import TFAutoModel
+from summary_generator.model.decoder import Decoder
+from summary_generator.model.encoder import Encoder
+from summary_generator.pre_process import PreProcess
+from summary_generator.model.transformer import Transformer
+
+
+class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+    def __init__(self, d_model, warmup_steps=4000):
+        super(CustomSchedule, self).__init__()
+
+        self.d_model = d_model
+        self.d_model = tf.cast(self.d_model, tf.float32)
+
+        self.warmup_steps = warmup_steps
+
+    def __call__(self, step):
+        arg1 = tf.math.rsqrt(step)
+
+        arg2 = step * (self.warmup_steps ** -1.5)
+
+        return tf.math.rsqrt(self.d_model) * tf.math.minimum(arg1, arg2)
 
 
 class ModelTraining(BaseService):
@@ -39,54 +52,45 @@ class ModelTraining(BaseService):
         self.loss_object = SparseCategoricalCrossentropy(
             from_logits=True, reduction="none"
         )
-        self.train_loss = tf.keras.metrics.Mean(name="train_loss")
-        self.train_accuracy = tf.keras.metrics.Mean(name="train_accuracy")
+        self.train_loss = keras.metrics.Mean(name="train_loss")
+        self.train_accuracy = keras.metrics.Mean(name="train_accuracy")
 
     def train(self):
-        # tf.config.run_functions_eagerly(True)
+        tf.config.run_functions_eagerly(True)
         d_model = 512
         # seq_dim = 768
-        text_token, text_attention, summary_token = self.pre_process.pipeline()
+        (
+            text_token,
+            text_attention,
+            summary_token,
+            summary_attention,
+        ) = self.pre_process.pipeline()
+        train_batches = tf.data.Dataset.from_tensor_slices(
+            (
+                text_token,
+                text_attention,
+                summary_token,
+                summary_attention,
+            )
+        ).shuffle(buffer_size=1024,seed=42353).batch(batch_size=2)
         # train_batches = self.pre_process.pipeline()
-        # learning_rate = CustomSchedule(d_model)
+        learning_rate = CustomSchedule(d_model)
 
-        # transformer = self.model()
-        # hidden_states = transformer[1]  # get output_hidden_states
-
-        # hidden_states_size = 4  # count of the last states
-        # hiddes_states_ind = list(range(-hidden_states_size, 0, 1))
-
-        # selected_hidden_states = tf.keras.layers.concatenate(
-        #     tuple([hidden_states[i] for i in hiddes_states_ind])
-        # )
-
-        # decoder = Decoder(
-        #     model_dim=d_model,
-        #     seq_dim=seq_dim,
-        #     number_of_decoder=2,
-        #     number_of_heads=12,
-        #     epsilon=1e-6,
-        #     drop_out_rate=0.1,
-        #     vocab_size=128000,
-        # )(selected_hidden_states)
-        # out = keras.layers.Dense(128000,activation='softmax')(decoder)
-        # model = keras.models.Model()
-
-        # self.optimizer = Adam(
-        #     learning_rate,
-        #     beta_1=0.9,
-        #     beta_2=0.98,
-        #     epsilon=1e-9,
-        # )
-        # self.bert_transformers: BertTransformers = BertTransformers(
-        #     number_of_decoder=2,
-        #     model_dim=512,
-        #     seq_dim=768,
-        #     epsilon=1e-6,
-        #     drop_out_rate=0.1,
-        #     vocab_size=128000,
-        #     number_of_head=12,
-        # )
+        self.optimizer = Adam(
+            learning_rate,
+            beta_1=0.9,
+            beta_2=0.98,
+            epsilon=1e-9,
+        )
+        self.bert_transformers: Transformer = Transformer(
+            number_of_decoder=2,
+            vocab_size=128000,
+            model_dim=768,
+            seq_dim=512,
+            number_of_heads=12,
+            epsilon=1e-6,
+            dropout_rate=0.1,
+        )
 
         # )  # (batch_size, input_seq_len, d_model)
         # tf.keras.utils.plot_model(
@@ -95,50 +99,50 @@ class ModelTraining(BaseService):
         # )
         # print(self.bert_transformers.summary())
 
-        # checkpoint_path = (
-        #     f"{self.global_path_provider.logs_path}/checkpoints/train"
-        # )
+        checkpoint_path = (
+            f"{self.global_path_provider.logs_path}/checkpoints/train"
+        )
 
-        # ckpt = tf.train.Checkpoint(
-        #     transformer=self.bert_transformers, optimizer=self.optimizer
-        # )
+        ckpt = tf.train.Checkpoint(
+            transformer=self.bert_transformers, optimizer=self.optimizer
+        )
 
-        # ckpt_manager = tf.train.CheckpointManager(
-        #     ckpt, checkpoint_path, max_to_keep=5
-        # )
+        ckpt_manager = tf.train.CheckpointManager(
+            ckpt, checkpoint_path, max_to_keep=5
+        )
 
-        # # if a checkpoint exists, restore the latest checkpoint.
-        # if ckpt_manager.latest_checkpoint:
-        #     ckpt.restore(ckpt_manager.latest_checkpoint)
-        #     print("Latest checkpoint restored!!")
+        # if a checkpoint exists, restore the latest checkpoint.
+        if ckpt_manager.latest_checkpoint:
+            ckpt.restore(ckpt_manager.latest_checkpoint)
+            print("Latest checkpoint restored!!")
 
-        # for epoch in range(20):  # EPOCH 20
-        #     start = time()
+        for epoch in range(20):  # EPOCH 20
+            start = time()
 
-        #     self.train_loss.reset_states()
-        #     self.train_accuracy.reset_states()
+            self.train_loss.reset_states()
+            self.train_accuracy.reset_states()
 
-        #     # inp -> portuguese, tar -> english
-        #     for (batch, (inp, tar)) in enumerate(train_batches):
+            # inp -> portuguese, tar -> english
+            for (batch, (inp, tar)) in enumerate(train_batches):
 
-        #         self.train_step(inp, tar)
+                self.train_step(inp, tar)
 
-        #         if batch % 50 == 0:
-        #             print(
-        #                 f"Epoch {epoch + 1} Batch {batch} Loss {self.train_loss.result():.4f} Accuracy {self.train_accuracy.result():.4f}"
-        #             )
+                if batch % 50 == 0:
+                    print(
+                        f"Epoch {epoch + 1} Batch {batch} Loss {self.train_loss.result():.4f} Accuracy {self.train_accuracy.result():.4f}"
+                    )
 
-        #     if (epoch + 1) % 5 == 0:
-        #         ckpt_save_path = ckpt_manager.save()
-        #         print(
-        #             f"Saving checkpoint for epoch {epoch+1} at {ckpt_save_path}"
-        #         )
+            if (epoch + 1) % 5 == 0:
+                ckpt_save_path = ckpt_manager.save()
+                print(
+                    f"Saving checkpoint for epoch {epoch+1} at {ckpt_save_path}"
+                )
 
-        #     print(
-        #         f"Epoch {epoch + 1} Loss {self.train_loss.result():.4f} Accuracy {self.train_accuracy.result():.4f}"
-        #     )
+            print(
+                f"Epoch {epoch + 1} Loss {self.train_loss.result():.4f} Accuracy {self.train_accuracy.result():.4f}"
+            )
 
-        #     print(f"Time taken for 1 epoch: {time.time() - start:.2f} secs\n")
+            print(f"Time taken for 1 epoch: {time.time() - start:.2f} secs\n")
 
     @tf.function(input_signature=train_step_signature)
     def train_step(self, inp, tar):
@@ -180,40 +184,54 @@ class ModelTraining(BaseService):
         return tf.reduce_sum(accuracies) / tf.reduce_sum(mask)
 
     def test_classify(self):
+        tf.config.run_functions_eagerly(True)
         (
             text_token,
             text_attention,
             summary_token,
             summary_attention,
         ) = self.pre_process.pipeline()
+        # tf.config.run_functions_eagerly(True)
+        input_ids = keras.Input(shape=(512,), dtype="int32")
+        attention_mask = keras.Input(shape=(512,), dtype="int32")
+        summary_ids = keras.Input(shape=(512,), dtype="int32")
+        summary_mask = keras.Input(shape=(512,), dtype="int32")
+        # self.model(input_ids,attention_mask)
+        enc = Encoder()
+        encoder = enc(input_ids, attention_mask)
+        # hidden_states = encoder[2][-1]  # get output_hidden_states
+        # for layer in self.model.layers:
+        #     layer.trainable = False
 
-        input_ids = tf.keras.Input(shape=(512,), dtype="int32")
-        attention_mask = tf.keras.Input(shape=(512), dtype="int32")
-        encoder = self.model([input_ids, attention_mask])
-        hidden_states = encoder[2][-1]  # get output_hidden_states
-        for layer in self.model.layers:
-            layer.trainable = False
-        hidden_states_size = 4  # count of the last states
-        hiddes_states_ind = list(range(-hidden_states_size, 0, 1))
-        selected_hiddes_states = tf.keras.layers.concatenate(
-            tuple([hidden_states[i] for i in hiddes_states_ind])
-        )
-        x = keras.layers.LSTM(128, return_sequences=False)(hidden_states)
-        x = keras.layers.Dense(1, activation="relu")(x)
+        x = Decoder(
+            number_of_decoder=2,
+            vocab_size=128000,
+            model_dim=768,
+            seq_dim=512,
+            number_of_heads=12,
+            epsilon=1e-6,
+            dropout_rate=0.1,
+        )(summary_ids, encoder, summary_mask)
+        x = keras.layers.Dense(128000, activation="softmax")(x)
 
-        model = tf.keras.models.Model(
+        model = keras.models.Model(
             inputs=[input_ids, attention_mask], outputs=x
         )
         model.compile(
-            tf.keras.optimizers.Adam(lr=1e-4),
+            Adam(lr=1e-4),
             loss="binary_crossentropy",
             metrics=["accuracy"],
+        )
+
+        tf.keras.utils.plot_model(
+            model,
+            to_file=f"{self.global_path_provider.logs_path}/model.png",
         )
         import numpy as np
 
         history = model.fit(
             [text_token, text_attention],
-            np.ones((50, 1)),
+            [summary_token, summary_attention],
             batch_size=2,
             epochs=2,
             # validation_split=0.2,

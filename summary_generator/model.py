@@ -258,8 +258,12 @@ class Encoder(keras.layers.Layer):
         self.encoder = TFAutoModel.from_pretrained(
             "dbmdz/bert-base-turkish-128k-uncased"
         )
-
-    def call(self, tokens: tf.Tensor, attention):
+        for layer in self.encoder.layers:
+            layer.trainable = False
+            
+    @tf.function
+    def call(self, tokens: tf.Tensor, attention: tf.Tensor):
+        
         """
         Args:
             x (tf.Tensor): Tokenized raw string inputs [None, seq_dim,model_dim]
@@ -268,7 +272,8 @@ class Encoder(keras.layers.Layer):
             _type_: _description_
         """
         # tokens, attention = inputs
-        x = self.encoder(tokens, attention)[2][-1]
+        x = self.encoder(tokens, attention)[0]
+        # x = self.encoder([tokens, attention])[2][-1]
         return x
 
 
@@ -467,22 +472,6 @@ class BertTransformers(keras.Model):
         )
         return self.final_layer(decoder_output)
 
-
-class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
-    def __init__(self, d_model, warmup_steps=4000):
-        super(CustomSchedule, self).__init__()
-
-        self.d_model = d_model
-        self.d_model = tf.cast(self.d_model, tf.float32)
-
-        self.warmup_steps = warmup_steps
-
-    def __call__(self, step):
-        arg1 = tf.math.rsqrt(step)
-
-        arg2 = step * (self.warmup_steps ** -1.5)
-
-        return tf.math.rsqrt(self.d_model) * tf.math.minimum(arg1, arg2)
 
 
 #%%
