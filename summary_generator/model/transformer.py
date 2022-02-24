@@ -29,8 +29,41 @@ class Transformer(keras.Model):
         )
         self.out = keras.layers.Dense(128000, "softmax")
 
-    def call(self, text_token, text_mask, summary_token, summary_mask):
-        x = self.encoder(text_token, text_mask)
-        x = self.decoder(summary_token, x, summary_mask)
+    def call(self, text_token, summary_token):
+        (
+            enc_padding_mask,
+            look_ahead_mask,
+            dec_padding_mask,
+        ) = self.create_masks(text_token, summary_token)
+        x = self.encoder(text_token, tf.squeeze(enc_padding_mask,axis=[1,2]))
+        x = self.decoder(summary_token, x, look_ahead_mask, dec_padding_mask)
         x = self.out(x)
         return x
+
+    def create_padding_mask(self, seq):
+        seq = tf.cast(tf.math.equal(seq, 0), tf.float32)
+
+        # add extra dimensions to add the padding
+        # to the attention logits.
+        return seq[:, tf.newaxis, tf.newaxis, :]  # (batch_size, 1, 1, seq_len)
+
+    def create_look_ahead_mask(self, size):
+        mask = 1 - tf.linalg.band_part(tf.ones((size, size)), -1, 0)
+        return mask  # (seq_len, seq_len)
+
+    def create_masks(self, inp, tar):
+        # Encoder padding mask
+        enc_padding_mask = self.create_padding_mask(inp)
+
+        # Used in the 2nd attention block in the decoder.
+        # This padding mask is used to mask the encoder outputs.
+        dec_padding_mask = self.create_padding_mask(inp)
+
+        # Used in the 1st attention block in the decoder.
+        # It is used to pad and mask future tokens in the input received by
+        # the decoder.
+        look_ahead_mask = self.create_look_ahead_mask(tf.shape(tar)[1])
+        dec_target_padding_mask = self.create_padding_mask(tar)
+        look_ahead_mask = tf.maximum(dec_target_padding_mask, look_ahead_mask)
+
+        return enc_padding_mask, look_ahead_mask, dec_padding_mask

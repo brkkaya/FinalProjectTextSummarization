@@ -41,24 +41,17 @@ class Decoder(keras.layers.Layer):
 
         self.dropout = keras.layers.Dropout(rate=dropout_rate)
 
-    def create_look_ahead_mask(self, seq_dim: int = 512, model_dim: int = 768):
-        mask = 1 - tf.linalg.band_part(tf.ones((seq_dim, model_dim)), -1, 0)
-        return mask  # (seq_len, seq_len)
-
     def call(
         self,
         input: tf.Tensor,
         encoder_value: tf.Tensor,
         padding_mask: tf.Tensor,
+        look_ahead_mask: tf.Tensor,
     ):
-        model_dim = tf.shape(input)[-1]
-        seq_dim = tf.shape(input)[1]
         embedding = self.embedding(input)
         embedding *= tf.math.sqrt(tf.cast(self.model_dim, tf.float32))
         pos_encoded = self.pos_encoding(None)
-        look_ahead_mask = self.create_look_ahead_mask(
-            seq_dim=seq_dim, model_dim=model_dim
-        )
+
         x = self.dropout(pos_encoded, training=False)
         print(tf.shape(x))
         for decoder_layer in self.decoder_layers:

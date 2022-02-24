@@ -65,14 +65,18 @@ class ModelTraining(BaseService):
             summary_token,
             summary_attention,
         ) = self.pre_process.pipeline()
-        train_batches = tf.data.Dataset.from_tensor_slices(
-            (
-                text_token,
-                text_attention,
-                summary_token,
-                summary_attention,
+        train_batches = (
+            tf.data.Dataset.from_tensor_slices(
+                (
+                    text_token,
+                    # text_attention,
+                    summary_token,
+                    # summary_attention,
+                )
             )
-        ).shuffle(buffer_size=1024,seed=42353).batch(batch_size=2)
+            .shuffle(buffer_size=1024, seed=42353)
+            .batch(batch_size=2)
+        )
         # train_batches = self.pre_process.pipeline()
         learning_rate = CustomSchedule(d_model)
 
@@ -147,10 +151,11 @@ class ModelTraining(BaseService):
     @tf.function(input_signature=train_step_signature)
     def train_step(self, inp, tar):
         tar_inp = tar[:, :-1]
+
         tar_real = tar[:, 1:]
 
         with tf.GradientTape() as tape:
-            predictions, _ = self.bert_transformers(
+            predictions = self.bert_transformers(
                 inp,
                 tar_inp,
             )
@@ -215,7 +220,8 @@ class ModelTraining(BaseService):
         x = keras.layers.Dense(128000, activation="softmax")(x)
 
         model = keras.models.Model(
-            inputs=[input_ids, attention_mask], outputs=x
+            inputs=[input_ids, attention_mask, summary_ids, summary_mask],
+            outputs=x,
         )
         model.compile(
             Adam(lr=1e-4),

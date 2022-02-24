@@ -56,7 +56,7 @@ class DecoderLayer(keras.layers.Layer):
         print(tf.shape(input_tensor))
         print(tf.shape(look_ahead_attention_output))
         out1 = self.layer_norm1(input_tensor + look_ahead_attention_output)
-
+        padding_mask = padding_mask[:,tf.newaxis,tf.newaxis,:]
         padding_attention_output = self.mha(
             query=encoder_representation,
             key=encoder_representation,
