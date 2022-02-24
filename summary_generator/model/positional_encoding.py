@@ -28,11 +28,9 @@ class PositionalEncoding(keras.layers.Layer):
         # apply cos to odd indices in the array; 2i+1
         angle_rads[:, 1::2] = np.cos(angle_rads[:, 1::2])
 
-        # pos_encoding = angle_rads[np.newaxis, ...]
+        pos_encoding = angle_rads[np.newaxis, ...]
         print(angle_rads.shape)
-        return tf.cast(angle_rads, dtype=tf.float32)
-
-
+        return tf.cast(pos_encoding, dtype=tf.float32)
 
 
 # f = PositionalEncoding()

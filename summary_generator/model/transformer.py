@@ -27,7 +27,7 @@ class Transformer(keras.Model):
             epsilon=1e-6,
             dropout_rate=0.1,
         )
-        self.out = keras.layers.Dense(128000, "softmax")
+        self.out = keras.layers.Dense(128000)
 
     def call(self, text_token, summary_token):
         (
@@ -35,8 +35,8 @@ class Transformer(keras.Model):
             look_ahead_mask,
             dec_padding_mask,
         ) = self.create_masks(text_token, summary_token)
-        x = self.encoder(text_token, tf.squeeze(enc_padding_mask,axis=[1,2]))
-        x = self.decoder(summary_token, x, look_ahead_mask, dec_padding_mask)
+        x = self.encoder(text_token, tf.squeeze(enc_padding_mask, axis=[1, 2]))
+        x = self.decoder(summary_token, x, dec_padding_mask, look_ahead_mask)
         x = self.out(x)
         return x
 

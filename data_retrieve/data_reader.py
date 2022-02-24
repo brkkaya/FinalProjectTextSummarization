@@ -15,7 +15,7 @@ class DataReader(BaseService):
             self._df_train = pd.DataFrame(
                 [json.loads(json_line) for json_line in jsonl_file],
                 columns=["text", "summary"],
-            )[:50]
+            )[:64]
             if self.config.params.truncate:
                 self._df_train = self._df_train.iloc[
                     len(self._df_train.iloc[:, 0]) <= 512, :

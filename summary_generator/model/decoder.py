@@ -22,7 +22,7 @@ class Decoder(keras.layers.Layer):
         self.model_dim = model_dim
         self.seq_dim = seq_dim
         self.embedding = keras.layers.Embedding(
-            input_dim=vocab_size, output_dim=seq_dim
+            input_dim=vocab_size, output_dim=model_dim
         )
         self.pos_encoding = PositionalEncoding(
             model_dim=model_dim, seq_length=seq_dim
@@ -48,11 +48,12 @@ class Decoder(keras.layers.Layer):
         padding_mask: tf.Tensor,
         look_ahead_mask: tf.Tensor,
     ):
+        seq_len = input.shape[1]
         embedding = self.embedding(input)
         embedding *= tf.math.sqrt(tf.cast(self.model_dim, tf.float32))
-        pos_encoded = self.pos_encoding(None)
+        embedding += self.pos_encoding(None)[:, :seq_len, :]
 
-        x = self.dropout(pos_encoded, training=False)
+        x = self.dropout(embedding, training=False)
         print(tf.shape(x))
         for decoder_layer in self.decoder_layers:
             x = decoder_layer(
