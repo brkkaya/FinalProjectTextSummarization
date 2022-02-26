@@ -34,7 +34,7 @@ class MultiHeadAttention(keras.layers.Layer):
 
         qk = tf.matmul(query, key, transpose_b=True)
         dk = tf.sqrt(tf.cast(tf.shape(key)[-1], dtype=tf.float32))
-        scaled_attention = qk/dk
+        scaled_attention = qk / dk
         if mask is not None:
             mask = mask * -1e9
             scaled_attention += mask
@@ -44,7 +44,6 @@ class MultiHeadAttention(keras.layers.Layer):
         return tf.matmul(attention_weights, value)
 
     def __split_heads(self, weights: tf.Tensor, batch_size: int) -> tf.Tensor:
-        print(f"weights {weights.shape}")
         weights = tf.reshape(
             weights, (batch_size, -1, self.number_of_heads, self.depth)
         )

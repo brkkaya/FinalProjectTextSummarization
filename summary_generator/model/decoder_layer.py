@@ -43,6 +43,7 @@ class DecoderLayer(keras.layers.Layer):
         encoder_representation: tf.Tensor,
         look_ahead_mask: Union[tf.Tensor, None],
         padding_mask: Union[tf.Tensor, None],
+        training: bool = True,
     ) -> tf.Tensor:
         look_ahead_attention_output = self.masked_mha(
             query=input_tensor,
@@ -51,7 +52,7 @@ class DecoderLayer(keras.layers.Layer):
             mask=look_ahead_mask,
         )
         look_ahead_attention_output = self.dropout1(
-            look_ahead_attention_output, training=False
+            look_ahead_attention_output, training=training
         )
         out1 = self.layer_norm1(look_ahead_attention_output + input_tensor)
         padding_attention_output = self.mha(
@@ -61,12 +62,12 @@ class DecoderLayer(keras.layers.Layer):
             mask=padding_mask,
         )
         padding_attention_output = self.dropout2(
-            padding_attention_output, training=False
+            padding_attention_output, training=training
         )
 
         out2 = self.layer_norm2(out1 + padding_attention_output)
 
         feed_forward = self.feed_forward(out2)
-        feed_forward = self.dropout3(feed_forward, training=False)
+        feed_forward = self.dropout3(feed_forward, training=training)
         out3 = self.layer_norm3(out2 + feed_forward)
         return out3

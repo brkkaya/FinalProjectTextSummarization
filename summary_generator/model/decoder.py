@@ -47,18 +47,18 @@ class Decoder(keras.layers.Layer):
         encoder_value: tf.Tensor,
         padding_mask: tf.Tensor,
         look_ahead_mask: tf.Tensor,
+        training: bool = True,
     ):
         seq_len = input.shape[1]
         embedding = self.embedding(input)
         embedding *= tf.math.sqrt(tf.cast(self.model_dim, tf.float32))
         embedding += self.pos_encoding(None)[:, :seq_len, :]
 
-        x = self.dropout(embedding, training=False)
-        print(tf.shape(x))
+        x = self.dropout(embedding, training=training)
         for decoder_layer in self.decoder_layers:
             x = decoder_layer(
                 x,
-                encoder_value,
+                encoder_value[:, :, : self.model_dim],
                 look_ahead_mask,
                 padding_mask,
             )

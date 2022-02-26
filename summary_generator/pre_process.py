@@ -32,7 +32,7 @@ class PreProcess(BaseService):
                     text=text,
                     return_tensors="tf",
                     padding="max_length",
-                    max_length=512,
+                    max_length=self.seq_dim,
                     return_attention_mask=True,
                     truncation=True,
                 )

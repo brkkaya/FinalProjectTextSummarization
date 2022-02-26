@@ -19,15 +19,15 @@ class Transformer(keras.Model):
         super().__init__(**kwargs)
         self.encoder = Encoder()
         self.decoder = Decoder(
-            number_of_decoder=2,
-            vocab_size=128000,
-            model_dim=768,
-            seq_dim=512,
-            number_of_heads=12,
-            epsilon=1e-6,
-            dropout_rate=0.1,
+            number_of_decoder=number_of_decoder,
+            vocab_size=vocab_size,
+            model_dim=model_dim,
+            seq_dim=seq_dim,
+            number_of_heads=number_of_heads,
+            epsilon=epsilon,
+            dropout_rate=dropout_rate,
         )
-        self.out = keras.layers.Dense(128000)
+        self.out = keras.layers.Dense(vocab_size)
 
     def call(self, text_token, summary_token):
         (

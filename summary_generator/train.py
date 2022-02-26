@@ -87,13 +87,13 @@ class ModelTraining(BaseService):
             epsilon=1e-9,
         )
         self.bert_transformers: Transformer = Transformer(
-            number_of_decoder=2,
-            vocab_size=128000,
-            model_dim=768,
-            seq_dim=512,
-            number_of_heads=12,
-            epsilon=1e-6,
-            dropout_rate=0.1,
+            number_of_decoder=self.decoder_number,
+            vocab_size=self.vocab_size,
+            model_dim=self.model_dim,
+            seq_dim=self.seq_dim,
+            number_of_heads=self.number_of_heads,
+            epsilon=self.epsilon,
+            dropout_rate=self.dropout_rate,
         )
 
         # )  # (batch_size, input_seq_len, d_model)
@@ -177,9 +177,9 @@ class ModelTraining(BaseService):
         mask = tf.cast(x=mask, dtype=loss_.dtype)
         return tf.reduce_sum(loss_) / tf.reduce_sum(mask)
 
-    def accuracy_function(real: tf.Tensor, pred: tf.Tensor):
+    def accuracy_function(self, real: tf.Tensor, pred: tf.Tensor):
 
-        accuracies = tf.equal(real, tf.argmax(pred, axis=2))
+        accuracies = tf.equal(real, tf.cast(tf.argmax(pred, axis=2),dtype=tf.int32))
 
         mask = tf.math.logical_not(tf.math.equal(real, 0))
         accuracies = tf.math.logical_and(mask, accuracies)

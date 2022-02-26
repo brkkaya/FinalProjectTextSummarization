@@ -2,3 +2,11 @@ write_header: False
 params:
   truncate: False
   batch_size: 64
+  model: 
+    number_of_heads: 8
+    vocab_size: 128000 #128000
+    model_dim: 256 # 768
+    seq_dim: 128 # 512
+    number_of_decoder: 2
+    epsilon: 0.000001
+    dropout_rate: 0.1
