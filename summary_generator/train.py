@@ -3,7 +3,6 @@ from statistics import mode
 from time import time
 import tensorflow as tf
 import tensorflow.keras as keras
-import torch
 from data_retrieve.data_reader import DataReader
 from src.services.base_service import BaseService
 from tensorflow.keras.losses import SparseCategoricalCrossentropy
@@ -146,7 +145,7 @@ class ModelTraining(BaseService):
                 f"Epoch {epoch + 1} Loss {self.train_loss.result():.4f} Accuracy {self.train_accuracy.result():.4f}"
             )
 
-            print(f"Time taken for 1 epoch: {time.time() - start:.2f} secs\n")
+            print(f"Time taken for 1 epoch: {time() - start:.2f} secs\n")
 
     @tf.function(input_signature=train_step_signature)
     def train_step(self, inp, tar):
@@ -179,7 +178,9 @@ class ModelTraining(BaseService):
 
     def accuracy_function(self, real: tf.Tensor, pred: tf.Tensor):
 
-        accuracies = tf.equal(real, tf.cast(tf.argmax(pred, axis=2),dtype=tf.int32))
+        accuracies = tf.equal(
+            real, tf.cast(tf.argmax(pred, axis=2), dtype=tf.int32)
+        )
 
         mask = tf.math.logical_not(tf.math.equal(real, 0))
         accuracies = tf.math.logical_and(mask, accuracies)

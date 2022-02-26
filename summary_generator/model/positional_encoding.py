@@ -29,7 +29,6 @@ class PositionalEncoding(keras.layers.Layer):
         angle_rads[:, 1::2] = np.cos(angle_rads[:, 1::2])
 
         pos_encoding = angle_rads[np.newaxis, ...]
-        print(angle_rads.shape)
         return tf.cast(pos_encoding, dtype=tf.float32)
 
 

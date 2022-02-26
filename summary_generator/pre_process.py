@@ -8,7 +8,6 @@ from typing import Dict, List
 import math
 from torch.nn.functional import cosine_similarity
 from nltk.tokenize import sent_tokenize
-import torch
 from torch import nn, Tensor
 
 
