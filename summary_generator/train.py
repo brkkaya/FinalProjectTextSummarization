@@ -53,6 +53,8 @@ class ModelTraining(BaseService):
         )
         self.train_loss = keras.metrics.Mean(name="train_loss")
         self.train_accuracy = keras.metrics.Mean(name="train_accuracy")
+        self.val_loss = keras.metrics.Mean(name="val_loss")
+        self.val_accuracy = keras.metrics.Mean(name="val_accuracy")
 
     def train(self):
         tf.config.run_functions_eagerly(True)
@@ -60,22 +62,31 @@ class ModelTraining(BaseService):
         # seq_dim = 768
         (
             text_token,
-            text_attention,
             summary_token,
-            summary_attention,
+            val_text_token,
+            val_summary_token,
         ) = self.pre_process.pipeline()
         train_batches = (
             tf.data.Dataset.from_tensor_slices(
                 (
                     text_token,
-                    # text_attention,
                     summary_token,
-                    # summary_attention,
                 )
             )
             .shuffle(buffer_size=1024, seed=42353)
             .batch(batch_size=2)
         )
+        val_batches = (
+            tf.data.Dataset.from_tensor_slices(
+                (
+                    val_text_token,
+                    val_summary_token,
+                )
+            )
+            .shuffle(buffer_size=1024, seed=42353)
+            .batch(batch_size=2)
+        )
+
         # train_batches = self.pre_process.pipeline()
         learning_rate = CustomSchedule(d_model)
 
@@ -131,21 +142,24 @@ class ModelTraining(BaseService):
                 self.train_step(inp, tar)
 
                 if batch % 50 == 0:
-                    print(
+                    self.log.info(
                         f"Epoch {epoch + 1} Batch {batch} Loss {self.train_loss.result():.4f} Accuracy {self.train_accuracy.result():.4f}"
                     )
 
             if (epoch + 1) % 5 == 0:
                 ckpt_save_path = ckpt_manager.save()
-                print(
+                self.log.info(
                     f"Saving checkpoint for epoch {epoch+1} at {ckpt_save_path}"
                 )
-
-            print(
-                f"Epoch {epoch + 1} Loss {self.train_loss.result():.4f} Accuracy {self.train_accuracy.result():.4f}"
+            self.validate(val_batches=val_batches)
+            
+            self.log.info(
+                f"Epoch {epoch + 1} Loss {self.train_loss.result():.4f} Accuracy {self.train_accuracy.result():.4f} \t Val Loss {self.val_loss.result():.4f} Val Accuracy {self.val_accuracy.result():.4f}"
             )
 
-            print(f"Time taken for 1 epoch: {time() - start:.2f} secs\n")
+            self.log.info(
+                f"Time taken for 1 epoch: {time() - start:.2f} secs\n"
+            )
 
     @tf.function(input_signature=train_step_signature)
     def train_step(self, inp, tar):
@@ -169,6 +183,19 @@ class ModelTraining(BaseService):
 
         self.train_loss(loss)
         self.train_accuracy(self.accuracy_function(tar_real, predictions))
+
+    def validate(self, val_batches):
+        for (batch, (val_inp, val_tar)) in enumerate(val_batches):
+            val_tar_inp = val_tar[:, :-1]
+            val_tar_real = val_tar[:, 1:]
+            predictions_val = self.bert_transformers(
+                val_inp, val_tar_inp, training=False
+            )
+            val_loss = self.loss_function(val_tar_real, predictions_val)
+            self.val_loss(val_loss)
+            self.val_accuracy(
+                self.accuracy_function(val_tar_real, predictions_val)
+            )
 
     def loss_function(self, real: tf.Tensor, pred: tf.Tensor):
         mask = tf.math.logical_not(tf.math.equal(real, 0))

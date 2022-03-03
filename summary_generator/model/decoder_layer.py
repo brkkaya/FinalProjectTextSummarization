@@ -71,3 +71,4 @@ class DecoderLayer(keras.layers.Layer):
         feed_forward = self.dropout3(feed_forward, training=training)
         out3 = self.layer_norm3(out2 + feed_forward)
         return out3
+

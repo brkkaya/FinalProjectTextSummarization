@@ -9,20 +9,21 @@ class DataReader(BaseService):
         self.log.info("Test Parser init")
         np.random.seed(42)
         with open(
-            f"{self.global_path_provider.path}/tu_train.jsonl", "r"
+            f"{self.global_path_provider.path}/turkish_train.jsonl", "r"
         ) as jsonl_file:
 
             self._df_train = pd.DataFrame(
                 [json.loads(json_line) for json_line in jsonl_file],
                 columns=["text", "summary"],
-            )[:64]
+            )
             if self.config.params.truncate:
-                self._df_train = self._df_train.iloc[
-                    len(self._df_train.iloc[:, 0]) <= 512, :
-                ]
+                mask = (
+                    self._df_train.iloc[:, 0].str.split(" ").str.len() >= 512
+                )
+                self._df_train = self._df_train.loc[mask, :]
 
         with open(
-            f"{self.global_path_provider.path}/tu_test.jsonl", "r"
+            f"{self.global_path_provider.path}/turkish_test.jsonl", "r"
         ) as jsonl_file:
 
             self._df_test = pd.DataFrame(
@@ -30,11 +31,10 @@ class DataReader(BaseService):
                 columns=["text", "summary"],
             )
             if self.config.params.truncate:
-                self._df_test = self._df_test.iloc[
-                    len(self._df_test.iloc[:, 0]) <= 512, :
-                ]
+                mask = self._df_val.iloc[:, 0].str.split(" ").str.len() >= 512
+                self._df_val = self._df_val.loc[mask, :]
         with open(
-            f"{self.global_path_provider.path}/tu_val.jsonl", "r"
+            f"{self.global_path_provider.path}/turkish_val.jsonl", "r"
         ) as jsonl_file:
 
             self._df_val = pd.DataFrame(
@@ -42,9 +42,8 @@ class DataReader(BaseService):
                 columns=["text", "summary"],
             )
             if self.config.params.truncate:
-                self._df_val = self._df_val.iloc[
-                    len(self._df_val.iloc[:, 0]) <= 512, :
-                ]
+                mask = self._df_val.iloc[:, 0].str.split(" ").str.len() >= 512
+                self._df_val = self._df_val.loc[mask, :]
 
     @property
     def df_train(self) -> pd.DataFrame:
