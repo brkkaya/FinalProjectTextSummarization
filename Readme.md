@@ -11,9 +11,9 @@ Project will have 3 part.
 
 2. Training a state-of-art deep learning model. We will use PyTorch on training.
 
-3. To able to use trained text summarization model as a product. We will create a website.
-   The website will have two layer. First part is the website the a client uses.
-   The second part is make the connection with a python module to get prediction.
+3. To able to use trained text summarization model as a product, we need to create a website.
+   The website will have two layer. First layer is the website the a client uses.
+   The second layer is a python module which makes prediction of the given text file. The first layer and second layer connect within a private IP address to communicate  with each other to make prediction and return back to user.
    We choose this way because of there is no framework created from PyTorch for JS programs.
    (The website will be created from scratch. The website will be dynamic.)
 
