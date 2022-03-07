@@ -65,7 +65,7 @@ class ModelTraining(BaseService):
             summary_token,
             val_text_token,
             val_summary_token,
-        ) = self.pre_process.pipeline()
+        ) = self.pre_process.pipeline(is_eval=False)
         train_batches = (
             tf.data.Dataset.from_tensor_slices(
                 (
@@ -113,9 +113,7 @@ class ModelTraining(BaseService):
         # )
         # print(self.bert_transformers.summary())
 
-        checkpoint_path = (
-            f"{self.global_path_provider.logs_path}/checkpoints/train"
-        )
+        checkpoint_path = f"logs/checkpoints/train"
 
         ckpt = tf.train.Checkpoint(
             transformer=self.bert_transformers, optimizer=self.optimizer
@@ -184,18 +182,20 @@ class ModelTraining(BaseService):
         self.train_loss(loss)
         self.train_accuracy(self.accuracy_function(tar_real, predictions))
 
-    def validate(self, val_batches):
+    def validate(self, val_batches, model: Transformer):
+        preds_val = []
+
         for (batch, (val_inp, val_tar)) in enumerate(val_batches):
             val_tar_inp = val_tar[:, :-1]
             val_tar_real = val_tar[:, 1:]
-            predictions_val = self.bert_transformers(
-                val_inp, val_tar_inp, training=False
-            )
+            predictions_val = model(val_inp, val_tar_inp, training=False)
             val_loss = self.loss_function(val_tar_real, predictions_val)
             self.val_loss(val_loss)
             self.val_accuracy(
                 self.accuracy_function(val_tar_real, predictions_val)
             )
+            preds_val.append(predictions_val)
+        return preds_val
 
     def loss_function(self, real: tf.Tensor, pred: tf.Tensor):
         mask = tf.math.logical_not(tf.math.equal(real, 0))
@@ -271,13 +271,16 @@ class ModelTraining(BaseService):
             # validation_split=0.2,
         )
 
-    def calculate_rouge_score(self, preds, reals):
+    def calculate_rouge_score(self, preds: tf.Tensor, reals: tf.Tensor):
+        """preds: are the token output of model
+        reals: real validation summary data."""
         from rouge_score import rouge_scorer
         import numpy as np
 
         scorer = rouge_scorer.RougeScorer(["rouge1", "rougleL"])
         results1 = {"precision": [], "recall": [], "fmeasure": []}
         resultsL = {"precision": [], "recall": [], "fmeasure": []}
+        preds = self.pre_process.decode_tokens(preds)
         for pred, real in zip(preds, reals):
             score = scorer.score(pred, real)
             precision, recall, fmeasure = score["rouge1"]
@@ -308,3 +311,28 @@ class ModelTraining(BaseService):
         self.log.info(
             f"Rouge-L Score fmeasure:{np.mean(np.asarray(resultsL['fmeasure']))}"
         )
+
+    def evaluate_model(self, model_path: str):
+        model = Transformer(
+            number_of_decoder=self.decoder_number,
+            vocab_size=self.vocab_size,
+            model_dim=self.model_dim,
+            seq_dim=self.seq_dim,
+            number_of_heads=self.number_of_heads,
+            epsilon=self.epsilon,
+            dropout_rate=self.dropout_rate,
+        )
+        model.load_weights(filepath=model_path)
+        val_text, val_summary = self.pre_process.pipeline(is_eval=True)
+        val_batches = (
+            tf.data.Dataset.from_tensor_slices(
+                (
+                    val_text,
+                    val_summary,
+                )
+            )
+            .shuffle(buffer_size=1024, seed=42353)
+            .batch(batch_size=2)
+        )
+        preds = self.validate(val_batches, model=model)
+        self.calculate_rouge_score(preds, val_summary)

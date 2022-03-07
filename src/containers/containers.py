@@ -10,8 +10,8 @@ from summary_generator.train import ModelTraining
 
 class Container:
 
-    parser = DataParser()
-    data_retriever = DataScraper(parser=parser)
+    # parser = DataParser()
+    # data_retriever = DataScraper(parser=parser)
     data_reader = DataReader()
     model_config = AutoConfig.from_pretrained(
         "dbmdz/bert-base-turkish-128k-cased",

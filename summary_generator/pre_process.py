@@ -124,35 +124,46 @@ class PreProcess(BaseService):
             ]
             # add every element one by one to main lists
 
-    def pipeline(self):
+    def pipeline(self, is_eval: bool):
         import tensorflow as tf
 
-        raw_text = self.data_reader.df_train["text"].values.tolist()
-        raw_summary = self.data_reader.df_train["summary"].values.tolist()
-        val_raw_text = self.data_reader.df_val["text"].values.tolist()
-        val_raw_summary = self.data_reader.df_val["summary"].values.tolist()
-        # self.split_texts(raw_text.tolist(), raw_summary.tolist())
-        text_token = self.tokenizer_text(raw_text)
-        summary_token = self.tokenizer_text(raw_summary)
-        val_text_token = self.tokenizer_text(val_raw_text)
-        val_summary_token = self.tokenizer_text(val_raw_summary)
+        if is_eval == False:
 
+            raw_text = self.data_reader.df_train["text"].values.tolist()
+            raw_summary = self.data_reader.df_train["summary"].values.tolist()
+            val_raw_text = self.data_reader.df_val["text"].values.tolist()
+            val_raw_summary = self.data_reader.df_val[
+                "summary"
+            ].values.tolist()
+
+            # self.split_texts(raw_text.tolist(), raw_summary.tolist())
+            text_token = self.tokenizer_text(raw_text)
+            summary_token = self.tokenizer_text(raw_summary)
+            val_text_token = self.tokenizer_text(val_raw_text)
+            val_summary_token = self.tokenizer_text(val_raw_summary)
+        else:
+            val_raw_text = self.data_reader.df_val["text"].values.tolist()
+            val_raw_summary = self.data_reader.df_val[
+                "summary"
+            ].values.tolist()
+            val_text_token = self.tokenizer_text(val_raw_text)
+            val_summary_token = self.tokenizer_text(val_raw_summary)
         # s = self.model(text_token[0:20], text_attention[0:20])
         # print(s)
         """Tokenized sentences even a sentence occurs, it type is List[List[int]]"""
-
-        return (
-            text_token,
-            summary_token,
-            val_text_token,
-            val_summary_token,
-        )
+        if is_eval == False:
+            return (
+                text_token,
+                summary_token,
+                val_text_token,
+                val_summary_token,
+            )
+        else:
+            return (val_text_token,val_summary_token)
+            
 
     def decode_tokens(self, input_ids):
-        return [
-            self.log.info(self.tokenizer.batch_decode(tokens))
-            for tokens in input_ids
-        ]
+        return self.tokenizer.batch_decode(input_ids)
 
     def vectorizer(self, text: List[str]):
         # tokens:List[List[str]] = [sentence.split(' ') for sentence in text]
