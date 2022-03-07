@@ -152,7 +152,7 @@ class ModelTraining(BaseService):
                     f"Saving checkpoint for epoch {epoch+1} at {ckpt_save_path}"
                 )
             self.validate(val_batches=val_batches)
-            
+
             self.log.info(
                 f"Epoch {epoch + 1} Loss {self.train_loss.result():.4f} Accuracy {self.train_accuracy.result():.4f} \t Val Loss {self.val_loss.result():.4f} Val Accuracy {self.val_accuracy.result():.4f}"
             )
@@ -269,4 +269,42 @@ class ModelTraining(BaseService):
             batch_size=2,
             epochs=2,
             # validation_split=0.2,
+        )
+
+    def calculate_rouge_score(self, preds, reals):
+        from rouge_score import rouge_scorer
+        import numpy as np
+
+        scorer = rouge_scorer.RougeScorer(["rouge1", "rougleL"])
+        results1 = {"precision": [], "recall": [], "fmeasure": []}
+        resultsL = {"precision": [], "recall": [], "fmeasure": []}
+        for pred, real in zip(preds, reals):
+            score = scorer.score(pred, real)
+            precision, recall, fmeasure = score["rouge1"]
+            results1["precision"].append(precision)
+            results1["recall"].append(recall)
+            results1["fmeasure"].append(fmeasure)
+            precision, recall, fmeasure = score["rougeL"]
+
+            resultsL["precision"].append(precision)
+            resultsL["recall"].append(recall)
+            resultsL["fmeasure"].append(fmeasure)
+
+        self.log.info(
+            f"Rouge-1 Score Precision:{np.mean(np.asarray(results1['precision']))}"
+        )
+        self.log.info(
+            f"Rouge-1 Score Recall:{np.mean(np.asarray(results1['recall']))}"
+        )
+        self.log.info(
+            f"Rouge-1 Score fmeasure:{np.mean(np.asarray(results1['fmeasure']))}"
+        )
+        self.log.info(
+            f"Rouge-L Score Precision:{np.mean(np.asarray(resultsL['precision']))}"
+        )
+        self.log.info(
+            f"Rouge-L Score Recall:{np.mean(np.asarray(resultsL['recall']))}"
+        )
+        self.log.info(
+            f"Rouge-L Score fmeasure:{np.mean(np.asarray(resultsL['fmeasure']))}"
         )
