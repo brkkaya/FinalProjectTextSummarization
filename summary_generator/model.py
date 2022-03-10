@@ -256,7 +256,7 @@ class Encoder(keras.layers.Layer):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.encoder = TFAutoModel.from_pretrained(
-            "dbmdz/bert-base-turkish-128k-uncased"
+            "dbmdz/bert-base-turkish-128k-cased"
         )
         for layer in self.encoder.layers:
             layer.trainable = False

@@ -1,8 +1,6 @@
-from base64 import encode
-from statistics import mode
-from time import time
 import tensorflow as tf
 import tensorflow.keras as keras
+from time import time
 from data_retrieve.data_reader import DataReader
 from src.services.base_service import BaseService
 from tensorflow.keras.losses import SparseCategoricalCrossentropy
@@ -12,6 +10,7 @@ from summary_generator.model.decoder import Decoder
 from summary_generator.model.encoder import Encoder
 from summary_generator.pre_process import PreProcess
 from summary_generator.model.transformer import Transformer
+from transformers import AutoTokenizer
 
 
 class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
@@ -36,6 +35,10 @@ class ModelTraining(BaseService):
         tf.TensorSpec(shape=(None, None), dtype=tf.int64),
         tf.TensorSpec(shape=(None, None), dtype=tf.int64),
     ]
+    val_step_signature = [
+        tf.TensorSpec(shape=(None, None), dtype=tf.int64),
+        tf.TensorSpec(shape=(None, None), dtype=tf.int64),
+    ]
 
     def __init__(
         self,
@@ -44,6 +47,7 @@ class ModelTraining(BaseService):
         model: TFAutoModel,
     ) -> None:
         super().__init__()
+        tf.get_logger().setLevel("ERROR")
         self.pre_process = pre_process
         self.model = model
 
@@ -55,16 +59,26 @@ class ModelTraining(BaseService):
         self.train_accuracy = keras.metrics.Mean(name="train_accuracy")
         self.val_loss = keras.metrics.Mean(name="val_loss")
         self.val_accuracy = keras.metrics.Mean(name="val_accuracy")
+        learning_rate = CustomSchedule(512)
+
+        self.optimizer = Adam(
+            learning_rate,
+            beta_1=0.9,
+            beta_2=0.98,
+            epsilon=1e-9,
+        )
+        self.results1 = {"precision": [], "recall": [], "fmeasure": []}
+        self.resultsL = {"precision": [], "recall": [], "fmeasure": []}
 
     def train(self):
-        tf.config.run_functions_eagerly(True)
+        # tf.config.run_functions_eagerly(True)
         d_model = 512
         # seq_dim = 768
         (
             text_token,
             summary_token,
-            val_text_token,
-            val_summary_token,
+            # val_text_token,
+            # val_summary_token,
         ) = self.pre_process.pipeline(is_eval=False)
         train_batches = (
             tf.data.Dataset.from_tensor_slices(
@@ -76,26 +90,6 @@ class ModelTraining(BaseService):
             .shuffle(buffer_size=1024, seed=42353)
             .batch(batch_size=2)
         )
-        val_batches = (
-            tf.data.Dataset.from_tensor_slices(
-                (
-                    val_text_token,
-                    val_summary_token,
-                )
-            )
-            .shuffle(buffer_size=1024, seed=42353)
-            .batch(batch_size=2)
-        )
-
-        # train_batches = self.pre_process.pipeline()
-        learning_rate = CustomSchedule(d_model)
-
-        self.optimizer = Adam(
-            learning_rate,
-            beta_1=0.9,
-            beta_2=0.98,
-            epsilon=1e-9,
-        )
         self.bert_transformers: Transformer = Transformer(
             number_of_decoder=self.decoder_number,
             vocab_size=self.vocab_size,
@@ -106,6 +100,8 @@ class ModelTraining(BaseService):
             dropout_rate=self.dropout_rate,
         )
 
+        # train_batches = self.pre_process.pipeline()
+
         # )  # (batch_size, input_seq_len, d_model)
         # tf.keras.utils.plot_model(
         #     self.bert_transformers,
@@ -113,7 +109,7 @@ class ModelTraining(BaseService):
         # )
         # print(self.bert_transformers.summary())
 
-        checkpoint_path = f"logs/checkpoints/train"
+        checkpoint_path = f"/content/drive/MyDrive/transformers_model/FinalProjectTextSummarization/logs/checkpoints/train_vanilla"
 
         ckpt = tf.train.Checkpoint(
             transformer=self.bert_transformers, optimizer=self.optimizer
@@ -144,12 +140,11 @@ class ModelTraining(BaseService):
                         f"Epoch {epoch + 1} Batch {batch} Loss {self.train_loss.result():.4f} Accuracy {self.train_accuracy.result():.4f}"
                     )
 
-            if (epoch + 1) % 5 == 0:
-                ckpt_save_path = ckpt_manager.save()
-                self.log.info(
-                    f"Saving checkpoint for epoch {epoch+1} at {ckpt_save_path}"
-                )
-            self.validate(val_batches=val_batches)
+            ckpt_save_path = ckpt_manager.save()
+            self.log.info(
+                f"Saving checkpoint for epoch {epoch+1} at {ckpt_save_path}"
+            )
+            # self.validate(val_batches=val_batches)
 
             self.log.info(
                 f"Epoch {epoch + 1} Loss {self.train_loss.result():.4f} Accuracy {self.train_accuracy.result():.4f} \t Val Loss {self.val_loss.result():.4f} Val Accuracy {self.val_accuracy.result():.4f}"
@@ -161,6 +156,7 @@ class ModelTraining(BaseService):
 
     @tf.function(input_signature=train_step_signature)
     def train_step(self, inp, tar):
+
         tar_inp = tar[:, :-1]
 
         tar_real = tar[:, 1:]
@@ -182,6 +178,7 @@ class ModelTraining(BaseService):
         self.train_loss(loss)
         self.train_accuracy(self.accuracy_function(tar_real, predictions))
 
+    @tf.function(input_signature=val_step_signature)
     def validate(self, val_batches, model: Transformer):
         preds_val = []
 
@@ -194,7 +191,14 @@ class ModelTraining(BaseService):
             self.val_accuracy(
                 self.accuracy_function(val_tar_real, predictions_val)
             )
-            preds_val.append(predictions_val)
+            preds_val.append(self.pre_process.decode_tokens(predictions_val))
+            if batch % 50 == 0:
+                self.log.info(
+                    f"Val Loss Batch {batch} : {self.val_loss.result():.4f}"
+                )
+                self.log.info(
+                    f"Val Accuracy Batch {batch} : {self.val_accuracy.result():.4f}"
+                )
         return preds_val
 
     def loss_function(self, real: tf.Tensor, pred: tf.Tensor):
@@ -257,10 +261,10 @@ class ModelTraining(BaseService):
             metrics=["accuracy"],
         )
 
-        tf.keras.utils.plot_model(
-            model,
-            to_file=f"{self.global_path_provider.logs_path}/model.png",
-        )
+        # tf.keras.utils.plot_model(
+        #     model,
+        #     to_file=f"{self.global_path_provider.logs_path}/model.png",
+        # )
         import numpy as np
 
         history = model.fit(
@@ -313,6 +317,9 @@ class ModelTraining(BaseService):
         )
 
     def evaluate_model(self, model_path: str):
+        import numpy as np
+
+        tf.config.run_functions_eagerly(True)
         model = Transformer(
             number_of_decoder=self.decoder_number,
             vocab_size=self.vocab_size,
@@ -322,17 +329,98 @@ class ModelTraining(BaseService):
             epsilon=self.epsilon,
             dropout_rate=self.dropout_rate,
         )
-        model.load_weights(filepath=model_path)
-        val_text, val_summary = self.pre_process.pipeline(is_eval=True)
+        checkpoint_path = "/content/drive/MyDrive/transformers_model/FinalProjectTextSummarization/logs/checkpoints/train_vanilla"
+
+        ckpt = tf.train.Checkpoint(transformer=model, optimizer=self.optimizer)
+
+        ckpt_manager = tf.train.CheckpointManager(
+            ckpt, checkpoint_path, max_to_keep=5
+        )
+
+        # if a checkpoint exists, restore the latest checkpoint.
+        if ckpt_manager.latest_checkpoint:
+            ckpt.restore(ckpt_manager.latest_checkpoint)
+            print("Latest checkpoint restored!!")
+
+        val_text, val_summary, val_raw_summary = self.pre_process.pipeline(
+            is_eval=True
+        )
         val_batches = (
             tf.data.Dataset.from_tensor_slices(
-                (
-                    val_text,
-                    val_summary,
-                )
+                (val_text, val_summary, val_raw_summary)
             )
             .shuffle(buffer_size=1024, seed=42353)
-            .batch(batch_size=2)
+            .batch(batch_size=1)
         )
-        preds = self.validate(val_batches, model=model)
-        self.calculate_rouge_score(preds, val_summary)
+        # preds = self.validate(val_batches, model=model)
+        for (batch, (val_inp, _, raw_summary)) in enumerate(val_batches):
+
+            self.generate_text(
+                val_inp, raw_summary, model, self.pre_process.tokenizer
+            )
+            if batch % 50 == 0:
+                self.log.info(f"Batch Size == {batch}")
+
+        self.log.info(
+            f"Rouge-1 Score Precision:{np.mean(np.asarray(self.results1['precision']))}"
+        )
+        self.log.info(
+            f"Rouge-1 Score Recall:{np.mean(np.asarray(self.results1['recall']))}"
+        )
+        self.log.info(
+            f"Rouge-1 Score fmeasure:{np.mean(np.asarray(self.results1['fmeasure']))}"
+        )
+        self.log.info(
+            f"Rouge-L Score Precision:{np.mean(np.asarray(self.resultsL['precision']))}"
+        )
+        self.log.info(
+            f"Rouge-L Score Recall:{np.mean(np.asarray(self.resultsL['recall']))}"
+        )
+        self.log.info(
+            f"Rouge-L Score fmeasure:{np.mean(np.asarray(self.resultsL['fmeasure']))}"
+        )
+
+    @tf.function(input_signature=val_step_signature)
+    def generate_text(
+        self,
+        text_token: tf.Tensor,
+        val_summary: str,
+        model: Transformer,
+        tokenizer: AutoTokenizer,
+    ):
+        from rouge_score import rouge_scorer
+
+        start_token = tf.constant(2, dtype=tf.int64)[tf.newaxis]
+        end_token = tf.constant(3, dtype=tf.int64)[tf.newaxis]
+        output_array = tf.TensorArray(
+            dtype=tf.int64, size=0, dynamic_size=True
+        )
+        output_array = output_array.write(0, start_token)
+        flag_break = False
+        for i in tf.range(512):
+            output = tf.transpose(output_array.stack())
+            # s = tf.random.uniform((1, 56, 100))
+            preds = model(text_token, output, training=False)
+            preds = preds[:, -1:, :]
+            predicted_id = tf.argmax(preds, axis=-1)
+            output_array = output_array.write(i + 1, predicted_id[0])
+            if predicted_id == end_token:
+                flag_break = True
+                break
+        output = tf.transpose(output_array.stack())
+        if flag_break:
+            gen_token_list = output[0, 1:-1].numpy().tolist()
+        else:
+            gen_token_list = output[0, 1:].numpy().tolist()
+        pred_text = tokenizer.decode(gen_token_list)
+        scorer = rouge_scorer.RougeScorer(["rouge1", "rougleL"])
+        score = scorer.score(pred_text, val_summary)
+        precision, recall, fmeasure = score["rouge1"]
+        self.results1["precision"].append(precision)
+        self.results1["recall"].append(recall)
+        self.results1["fmeasure"].append(fmeasure)
+        precision, recall, fmeasure = score["rougeL"]
+
+        self.resultsL["precision"].append(precision)
+        self.resultsL["recall"].append(recall)
+        self.resultsL["fmeasure"].append(fmeasure)

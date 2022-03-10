@@ -131,16 +131,16 @@ class PreProcess(BaseService):
 
             raw_text = self.data_reader.df_train["text"].values.tolist()
             raw_summary = self.data_reader.df_train["summary"].values.tolist()
-            val_raw_text = self.data_reader.df_val["text"].values.tolist()
-            val_raw_summary = self.data_reader.df_val[
-                "summary"
-            ].values.tolist()
+            # val_raw_text = self.data_reader.df_val["text"].values.tolist()
+            # val_raw_summary = self.data_reader.df_val[
+            # "summary"
+            # ].values.tolist()
 
             # self.split_texts(raw_text.tolist(), raw_summary.tolist())
             text_token = self.tokenizer_text(raw_text)
             summary_token = self.tokenizer_text(raw_summary)
-            val_text_token = self.tokenizer_text(val_raw_text)
-            val_summary_token = self.tokenizer_text(val_raw_summary)
+            # val_text_token = self.tokenizer_text(val_raw_text)
+            # val_summary_token = self.tokenizer_text(val_raw_summary)
         else:
             val_raw_text = self.data_reader.df_val["text"].values.tolist()
             val_raw_summary = self.data_reader.df_val[
@@ -155,12 +155,11 @@ class PreProcess(BaseService):
             return (
                 text_token,
                 summary_token,
-                val_text_token,
-                val_summary_token,
+                # val_text_token,
+                # val_summary_token,
             )
         else:
-            return (val_text_token,val_summary_token)
-            
+            return (val_text_token, val_summary_token, val_raw_summary)
 
     def decode_tokens(self, input_ids):
         return self.tokenizer.batch_decode(input_ids)
